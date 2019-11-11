@@ -89,6 +89,7 @@ public class TestAbstractEditJarTask extends TaskTest<AbstractEditJarTask>
         Assert.assertEquals("Should have directories", expectedDirectoryCount, directoryCount);
     }
 
+    @SuppressWarnings("unchecked")
     @Test
     public void runTask() throws Throwable
     {

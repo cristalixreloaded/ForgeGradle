@@ -248,24 +248,8 @@ public abstract class BaseExtension
         checkMappings();
     }
 
-    /**
-     * Checks that the set mappings are valid based on the channel, version, and MC version.
-     * If the mappings are invalid, this method will throw a runtime exception.
-     */
-    protected void checkMappings()
-    {
-
-        if (!Strings.isNullOrEmpty(version)
-                && (compareVersion(version, MIN_VERSION) < 0 || compareVersion(version, MAX_VERSION) > 0)
-                && !suppressVersionTest)
-        {
-                // version not supported
-                throw new GradleConfigurationException(String.format("ForgeGradle %s does not support Minecraft %s. MIN: %s, MAX: %s",
-                        forgeGradleVersion, version, MIN_VERSION, nullStringTo(MAX_VERSION, "none")));
-
-        }
-
-        // mappings or mc version are null
+    protected void checkMappings() {
+    	// mappings or mc version are null
         if (mappingsChannel == null || Strings.isNullOrEmpty(version))
             return;
 
@@ -304,16 +288,15 @@ public abstract class BaseExtension
                     // right channel, but wrong mc
                     if (rightChannel && !rightMc)
                     {
-                        project.getLogger().warn("This mapping '" + getMappings() + "' was designed for MC " + mcEntry.getKey() + "! Use at your own peril.");
+                        project.getLogger().warn("Fuzzing selected mapping '" + getMappings() + "' to designed MC version " + mcEntry.getKey());
                         replacer.putReplacement(Constants.REPLACE_MCP_MCVERSION, mcEntry.getKey()); // set MC version
                         return;
-                        // throw new GradleConfigurationException("This mapping '" + getMappings() + "' exists only for MC " + mcEntry.getKey() + "!");
                     }
 
                     // right MC , but wrong channel
                     else if (rightMc && !rightChannel)
                     {
-                        throw new GradleConfigurationException("This mapping '" + getMappings() + "' doesnt exist! perhaps you meant '" + channelEntry.getKey() + "_" + mappingsVersion + "'");
+                        throw new GradleConfigurationException("Selected mapping '" + getMappings() + "' doesnt exist! Perhaps you meant '" + channelEntry.getKey() + "_" + mappingsVersion + "'?");
                     }
                 }
             }

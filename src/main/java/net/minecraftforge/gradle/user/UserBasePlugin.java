@@ -19,44 +19,23 @@
  */
 package net.minecraftforge.gradle.user;
 
-import static net.minecraftforge.gradle.common.Constants.*;
-import static net.minecraftforge.gradle.user.UserConstants.*;
-
-import java.io.File;
-import java.io.IOException;
-import java.nio.file.Path;
-import java.util.ArrayList;
-import java.util.HashMap;
-import java.util.List;
-import java.util.regex.Pattern;
-
-import javax.xml.parsers.DocumentBuilder;
-import javax.xml.parsers.DocumentBuilderFactory;
-import javax.xml.transform.OutputKeys;
-import javax.xml.transform.Transformer;
-import javax.xml.transform.TransformerFactory;
-import javax.xml.transform.dom.DOMSource;
-import javax.xml.transform.stream.StreamResult;
-
-import org.gradle.api.Action;
-import org.gradle.api.DefaultTask;
-import org.gradle.api.NamedDomainObjectContainer;
-import org.gradle.api.Project;
-import org.gradle.api.Task;
-import org.gradle.api.XmlProvider;
-import org.gradle.api.artifacts.Configuration;
-import org.gradle.api.artifacts.ConfigurationContainer;
-import org.gradle.api.artifacts.Dependency;
-import org.gradle.api.artifacts.ExternalModuleDependency;
-import org.gradle.api.artifacts.ModuleVersionIdentifier;
-import org.gradle.api.artifacts.ResolvedArtifact;
+import com.google.common.base.Joiner;
+import com.google.common.base.Strings;
+import com.google.common.collect.ImmutableMap;
+import com.google.common.collect.Maps;
+import groovy.lang.Closure;
+import net.minecraftforge.gradle.common.BasePlugin;
+import net.minecraftforge.gradle.common.Constants;
+import net.minecraftforge.gradle.tasks.*;
+import net.minecraftforge.gradle.tasks.fernflower.ApplyFernFlowerTask;
+import net.minecraftforge.gradle.user.ReobfTaskFactory.ReobfTaskWrapper;
+import net.minecraftforge.gradle.util.GradleConfigurationException;
+import net.minecraftforge.gradle.util.delayed.DelayedFile;
+import org.gradle.api.*;
+import org.gradle.api.artifacts.*;
 import org.gradle.api.artifacts.component.ComponentIdentifier;
 import org.gradle.api.artifacts.maven.Conf2ScopeMappingContainer;
-import org.gradle.api.artifacts.result.ArtifactResolutionResult;
-import org.gradle.api.artifacts.result.ArtifactResult;
-import org.gradle.api.artifacts.result.ComponentArtifactsResult;
-import org.gradle.api.artifacts.result.DependencyResult;
-import org.gradle.api.artifacts.result.ResolvedArtifactResult;
+import org.gradle.api.artifacts.result.*;
 import org.gradle.api.file.ConfigurableFileCollection;
 import org.gradle.api.file.FileTreeElement;
 import org.gradle.api.internal.plugins.DslObject;
@@ -84,25 +63,23 @@ import org.w3c.dom.Document;
 import org.w3c.dom.Element;
 import org.w3c.dom.NodeList;
 
-import com.google.common.base.Joiner;
-import com.google.common.base.Strings;
-import com.google.common.collect.ImmutableMap;
-import com.google.common.collect.Maps;
+import javax.xml.parsers.DocumentBuilder;
+import javax.xml.parsers.DocumentBuilderFactory;
+import javax.xml.transform.OutputKeys;
+import javax.xml.transform.Transformer;
+import javax.xml.transform.TransformerFactory;
+import javax.xml.transform.dom.DOMSource;
+import javax.xml.transform.stream.StreamResult;
+import java.io.File;
+import java.io.IOException;
+import java.nio.file.Path;
+import java.util.ArrayList;
+import java.util.HashMap;
+import java.util.List;
+import java.util.regex.Pattern;
 
-import groovy.lang.Closure;
-import net.minecraftforge.gradle.common.BasePlugin;
-import net.minecraftforge.gradle.common.Constants;
-import net.minecraftforge.gradle.tasks.ApplyS2STask;
-import net.minecraftforge.gradle.tasks.CreateStartTask;
-import net.minecraftforge.gradle.tasks.DeobfuscateJar;
-import net.minecraftforge.gradle.tasks.ExtractS2SRangeTask;
-import net.minecraftforge.gradle.tasks.GenEclipseRunTask;
-import net.minecraftforge.gradle.tasks.PostDecompileTask;
-import net.minecraftforge.gradle.tasks.RemapSources;
-import net.minecraftforge.gradle.tasks.fernflower.ApplyFernFlowerTask;
-import net.minecraftforge.gradle.user.ReobfTaskFactory.ReobfTaskWrapper;
-import net.minecraftforge.gradle.util.GradleConfigurationException;
-import net.minecraftforge.gradle.util.delayed.DelayedFile;
+import static net.minecraftforge.gradle.common.Constants.*;
+import static net.minecraftforge.gradle.user.UserConstants.*;
 
 public abstract class UserBasePlugin<T extends UserBaseExtension> extends BasePlugin<T>
 {
@@ -177,7 +154,7 @@ public abstract class UserBasePlugin<T extends UserBaseExtension> extends BasePl
         // to guard against stupid programmers
         if (!madeDecompTasks)
         {
-            throw new RuntimeException("THE DECOMP TASKS HAVENT BEEN MADE!! STUPID FORGEGRADLE DEVELOPER!!!! :(");
+            throw new RuntimeException("Decomp tasks haven't been made yet");
         }
 
         // verify runDir is set
@@ -233,6 +210,7 @@ public abstract class UserBasePlugin<T extends UserBaseExtension> extends BasePl
             ConfigurableFileCollection col = project.files(getStartDir());
             col.builtBy(TASK_MAKE_START);
             project.getDependencies().add(CONFIG_START, col);
+            project.getDependencies().add(CONFIG_START, "net.minecraft:launchwrapper:1.12");
         }
         // TODO: do some GradleStart stuff based on the MC version?
 
@@ -298,19 +276,28 @@ public abstract class UserBasePlugin<T extends UserBaseExtension> extends BasePl
     @SuppressWarnings("unchecked")
     protected void makeDecompTasks(final String globalPattern, final String localPattern, Object inputJar, String inputTask, Object mcpPatchSet, Object mcpInject)
     {
-        madeDecompTasks = true; // to guard against stupid programmers
+        madeDecompTasks = true;
+
+        final Object transformedJar = chooseDeobfOutput(globalPattern, localPattern, "", "transformed");
+        final AccessTransformJar transformAccess = makeTask(TASK_ACCESS_TRANSFORM, AccessTransformJar.class);
+        {
+            transformAccess.setInJar(inputJar);
+            transformAccess.setOutJar(transformedJar);
+            transformAccess.dependsOn(inputTask, TASK_GENERATE_SRGS, TASK_EXTRACT_DEP_ATS, TASK_DD_COMPILE, TASK_DD_PROVIDED);
+        }
 
         final DeobfuscateJar deobfBin = makeTask(TASK_DEOBF_BIN, DeobfuscateJar.class);
         {
             deobfBin.setSrg(delayedFile(SRG_NOTCH_TO_MCP));
-            deobfBin.setExceptorJson(delayedFile(MCP_DATA_EXC_JSON));
             deobfBin.setExceptorCfg(delayedFile(EXC_MCP));
+            deobfBin.setAccessCfg(delayedFile(MCP_DATA_ACCESS));
+            deobfBin.setConstructorCfg(delayedFile(MCP_DATA_CONSTRUCTORS));
+            deobfBin.setExceptionsCfg(delayedFile(MCP_DATA_EXCEPTIONS));
             deobfBin.setFieldCsv(delayedFile(CSV_FIELD));
             deobfBin.setMethodCsv(delayedFile(CSV_METHOD));
-            deobfBin.setApplyMarkers(false);
-            deobfBin.setInJar(inputJar);
+            deobfBin.setInJar(transformedJar);
             deobfBin.setOutJar(chooseDeobfOutput(globalPattern, localPattern, "Bin", ""));
-            deobfBin.dependsOn(inputTask, TASK_GENERATE_SRGS, TASK_EXTRACT_DEP_ATS, TASK_DD_COMPILE, TASK_DD_PROVIDED);
+            deobfBin.dependsOn(transformAccess);
         }
 
         final Object deobfDecompJar = chooseDeobfOutput(globalPattern, localPattern, "", "srgBin");
@@ -322,12 +309,13 @@ public abstract class UserBasePlugin<T extends UserBaseExtension> extends BasePl
         final DeobfuscateJar deobfDecomp = makeTask(TASK_DEOBF, DeobfuscateJar.class);
         {
             deobfDecomp.setSrg(delayedFile(SRG_NOTCH_TO_SRG));
-            deobfDecomp.setExceptorJson(delayedFile(MCP_DATA_EXC_JSON));
             deobfDecomp.setExceptorCfg(delayedFile(EXC_SRG));
-            deobfDecomp.setApplyMarkers(true);
-            deobfDecomp.setInJar(inputJar);
+            deobfDecomp.setAccessCfg(delayedFile(MCP_DATA_ACCESS));
+            deobfDecomp.setConstructorCfg(delayedFile(MCP_DATA_CONSTRUCTORS));
+            deobfDecomp.setExceptionsCfg(delayedFile(MCP_DATA_EXCEPTIONS));
+            deobfDecomp.setInJar(transformedJar);
             deobfDecomp.setOutJar(deobfDecompJar);
-            deobfDecomp.dependsOn(inputTask, TASK_GENERATE_SRGS, TASK_EXTRACT_DEP_ATS, TASK_DD_COMPILE, TASK_DD_PROVIDED); // todo grab correct task to depend on
+            deobfDecomp.dependsOn(transformAccess);
         }
 
         final ApplyFernFlowerTask decompile = makeTask(TASK_DECOMPILE, ApplyFernFlowerTask.class);
@@ -977,6 +965,7 @@ public abstract class UserBasePlugin<T extends UserBaseExtension> extends BasePl
         DeobfuscateJar binDeobf = (DeobfuscateJar) project.getTasks().getByName(TASK_DEOBF_BIN);
         DeobfuscateJar decompDeobf = (DeobfuscateJar) project.getTasks().getByName(TASK_DEOBF);
 
+
         // ATs from the ExtensionObject
         Object[] extAts = getExtension().getAccessTransformers().toArray();
         binDeobf.addAts(extAts);
@@ -994,6 +983,21 @@ public abstract class UserBasePlugin<T extends UserBaseExtension> extends BasePl
         }
 
         useLocalCache = useLocalCache || addedAts;
+
+        JavaPluginConvention javaModule = (JavaPluginConvention) project.getConvention().getPlugins().get("java");
+        SourceSet main = javaModule.getSourceSets().getByName(SourceSet.MAIN_SOURCE_SET_NAME);
+
+        AccessTransformJar transformAccess = (AccessTransformJar) project.getTasks().getByName(TASK_ACCESS_TRANSFORM);
+
+        for (File resourceDir : main.getResources().getSourceDirectories()) {
+            File file = new File(resourceDir, "access_transformations.at");
+            if (file.exists() && file.isFile()) {
+                transformAccess.addAts(file);
+            }
+        }
+        Configuration implementation = project.getConfigurations().getByName("implementation");
+        implementation.setCanBeResolved(true);
+        transformAccess.addAts(implementation.resolve());
     }
 
     /**

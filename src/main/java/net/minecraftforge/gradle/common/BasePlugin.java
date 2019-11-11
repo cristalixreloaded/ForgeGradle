@@ -19,38 +19,6 @@
  */
 package net.minecraftforge.gradle.common;
 
-import static net.minecraftforge.gradle.common.Constants.*;
-
-import java.io.File;
-import java.io.IOException;
-import java.io.InputStream;
-import java.lang.reflect.ParameterizedType;
-import java.lang.reflect.Type;
-import java.net.HttpURLConnection;
-import java.net.URL;
-import java.util.Collections;
-import java.util.List;
-import java.util.Map;
-
-import net.minecraftforge.gradle.util.json.version.ManifestVersion;
-import org.gradle.api.Action;
-import org.gradle.api.DefaultTask;
-import org.gradle.api.Plugin;
-import org.gradle.api.Project;
-import org.gradle.api.Task;
-import org.gradle.api.artifacts.Configuration;
-import org.gradle.api.artifacts.Dependency;
-import org.gradle.api.artifacts.Configuration.State;
-import org.gradle.api.artifacts.dsl.DependencyHandler;
-import org.gradle.api.artifacts.repositories.FlatDirectoryArtifactRepository;
-import org.gradle.api.artifacts.repositories.MavenArtifactRepository;
-import org.gradle.api.logging.Logger;
-import org.gradle.api.logging.Logging;
-import org.gradle.api.plugins.ExtraPropertiesExtension;
-import org.gradle.api.specs.Spec;
-import org.gradle.api.tasks.Delete;
-import org.gradle.testfixtures.ProjectBuilder;
-
 import com.google.common.base.Charsets;
 import com.google.common.base.Splitter;
 import com.google.common.base.Strings;
@@ -63,30 +31,43 @@ import com.google.common.collect.Lists;
 import com.google.common.io.ByteStreams;
 import com.google.common.io.Files;
 import com.google.gson.reflect.TypeToken;
-
 import groovy.lang.Closure;
-import net.minecraftforge.gradle.tasks.CrowdinDownload;
-import net.minecraftforge.gradle.tasks.Download;
-import net.minecraftforge.gradle.tasks.DownloadAssetsTask;
-import net.minecraftforge.gradle.tasks.EtagDownloadTask;
-import net.minecraftforge.gradle.tasks.ExtractConfigTask;
-import net.minecraftforge.gradle.tasks.GenSrgs;
-import net.minecraftforge.gradle.tasks.JenkinsChangelog;
-import net.minecraftforge.gradle.tasks.MergeJars;
-import net.minecraftforge.gradle.tasks.SignJar;
-import net.minecraftforge.gradle.tasks.SplitJarTask;
+import net.minecraftforge.gradle.tasks.*;
 import net.minecraftforge.gradle.util.FileLogListenner;
 import net.minecraftforge.gradle.util.GradleConfigurationException;
-import net.minecraftforge.gradle.util.delayed.DelayedFile;
-import net.minecraftforge.gradle.util.delayed.DelayedFileTree;
-import net.minecraftforge.gradle.util.delayed.DelayedString;
-import net.minecraftforge.gradle.util.delayed.ReplacementProvider;
-import net.minecraftforge.gradle.util.delayed.TokenReplacer;
+import net.minecraftforge.gradle.util.delayed.*;
 import net.minecraftforge.gradle.util.json.JsonFactory;
 import net.minecraftforge.gradle.util.json.fgversion.FGBuildStatus;
 import net.minecraftforge.gradle.util.json.fgversion.FGVersion;
 import net.minecraftforge.gradle.util.json.fgversion.FGVersionWrapper;
+import net.minecraftforge.gradle.util.json.version.ManifestVersion;
 import net.minecraftforge.gradle.util.json.version.Version;
+import org.gradle.api.*;
+import org.gradle.api.artifacts.Configuration;
+import org.gradle.api.artifacts.Configuration.State;
+import org.gradle.api.artifacts.Dependency;
+import org.gradle.api.artifacts.dsl.DependencyHandler;
+import org.gradle.api.artifacts.repositories.FlatDirectoryArtifactRepository;
+import org.gradle.api.artifacts.repositories.MavenArtifactRepository;
+import org.gradle.api.logging.Logger;
+import org.gradle.api.logging.Logging;
+import org.gradle.api.plugins.ExtraPropertiesExtension;
+import org.gradle.api.specs.Spec;
+import org.gradle.api.tasks.Delete;
+import org.gradle.testfixtures.ProjectBuilder;
+
+import java.io.File;
+import java.io.IOException;
+import java.io.InputStream;
+import java.lang.reflect.ParameterizedType;
+import java.lang.reflect.Type;
+import java.net.HttpURLConnection;
+import java.net.URL;
+import java.util.Collections;
+import java.util.List;
+import java.util.Map;
+
+import static net.minecraftforge.gradle.common.Constants.*;
 public abstract class BasePlugin<K extends BaseExtension> implements Plugin<Project>
 {
     private static final Logger LOGGER = Logging.getLogger(BasePlugin.class);
@@ -242,7 +223,7 @@ public abstract class BasePlugin<K extends BaseExtension> implements Plugin<Proj
 //        ApplyFernFlowerTask ffTask = ((ApplyFernFlowerTask) project.getTasks().getByName("decompileJar"));
 //        ffTask.setClasspath(javaConv.getSourceSets().getByName("main").getCompileClasspath());
 
-        // https://files.minecraftforge.net/maven/de/oceanlabs/mcp/mcp/1.7.10/mcp-1.7.10-srg.zip
+        // https://files.minecraftforge.net/maven/de/oceanlabs/mcp/mcp_config/1.13.1/mcp_config-1.13.1.zip
         project.getDependencies().add(CONFIG_MAPPINGS, ImmutableMap.of(
                 "group", "de.oceanlabs.mcp",
                 "name", delayedString("mcp_" + REPLACE_MCP_CHANNEL).call(),
@@ -252,9 +233,8 @@ public abstract class BasePlugin<K extends BaseExtension> implements Plugin<Proj
 
         project.getDependencies().add(CONFIG_MCP_DATA, ImmutableMap.of(
                 "group", "de.oceanlabs.mcp",
-                "name", "mcp",
+                "name", "mcp_config",
                 "version", delayedString(REPLACE_MC_VERSION).call(),
-                "classifier", "srg",
                 "ext", "zip"
                 ));
 
@@ -542,7 +522,7 @@ public abstract class BasePlugin<K extends BaseExtension> implements Plugin<Proj
             merge.setDescription(null);
         }
 
-        ExtractConfigTask extractMcpData = makeTask(TASK_EXTRACT_MCP, ExtractConfigTask.class);
+        ExtractConfigTask extractMcpData = makeTask(TASK_EXTRACT_MCP, ExtractMcpConfigTask.class);
         {
             extractMcpData.setDestinationDir(delayedFile(DIR_MCP_DATA));
             extractMcpData.setConfig(CONFIG_MCP_DATA);
@@ -559,7 +539,7 @@ public abstract class BasePlugin<K extends BaseExtension> implements Plugin<Proj
         GenSrgs genSrgs = makeTask(TASK_GENERATE_SRGS, GenSrgs.class);
         {
             genSrgs.setInSrg(delayedFile(MCP_DATA_SRG));
-            genSrgs.setInExc(delayedFile(MCP_DATA_EXC));
+            genSrgs.setInConstructors(delayedFile(MCP_DATA_CONSTRUCTORS));
             genSrgs.setInStatics(delayedFile(MCP_DATA_STATICS));
             genSrgs.setMethodsCsv(delayedFile(CSV_METHOD));
             genSrgs.setFieldsCsv(delayedFile(CSV_FIELD));
@@ -819,7 +799,6 @@ public abstract class BasePlugin<K extends BaseExtension> implements Plugin<Proj
                     String configName = CONFIG_MC_DEPS;
                     if (lib.name.contains("java3d")
                             || lib.name.contains("paulscode")
-                            || lib.name.contains("lwjgl")
                             || lib.name.contains("twitch")
                             || lib.name.contains("jinput"))
                     {

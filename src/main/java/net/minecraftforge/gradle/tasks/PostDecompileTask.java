@@ -35,6 +35,7 @@ import java.util.zip.ZipEntry;
 
 import net.minecraftforge.gradle.common.Constants;
 import net.minecraftforge.gradle.util.ThrowableUtil;
+import net.minecraftforge.gradle.util.caching.Cached;
 import net.minecraftforge.gradle.util.delayed.DelayedFile;
 import net.minecraftforge.gradle.util.mcp.FFPatcher;
 import net.minecraftforge.gradle.util.mcp.GLConstantFixer;
@@ -49,6 +50,7 @@ import org.gradle.api.logging.LogLevel;
 import org.gradle.api.logging.Logger;
 import org.gradle.api.tasks.InputFile;
 import org.gradle.api.tasks.InputFiles;
+import org.gradle.api.tasks.OutputFile;
 
 import com.github.abrarsyed.jastyle.ASFormatter;
 import com.github.abrarsyed.jastyle.OptParser;
@@ -63,9 +65,18 @@ import com.google.common.io.Resources;
 
 public class PostDecompileTask extends AbstractEditJarTask
 {
+    @InputFile
+    private Object                       inJar;
+
     private Object                       patchDir;
     private Object                       injectDir;
+
+    @InputFile
     private Object                       astyleConfig;
+
+    @OutputFile
+    @Cached
+    private Object                       outJar;
 
     //private static final Pattern         BEFORE      = Pattern.compile("(?m)((case|default).+(?:\\r\\n|\\r|\\n))(?:\\r\\n|\\r|\\n)");
     //private static final Pattern         AFTER       = Pattern.compile("(?m)(?:\\r\\n|\\r|\\n)((?:\\r\\n|\\r|\\n)[ \\t]+(case|default))");
@@ -79,9 +90,10 @@ public class PostDecompileTask extends AbstractEditJarTask
     @Override
     public void doStuffBefore() throws Exception
     {
+    	String patchRoot = getProject().file(patchDir).getAbsolutePath();
         for (File f : getPatches())
         {
-            String name = f.getName();
+            String name = f.getAbsolutePath().substring(patchRoot.length() + 1).replace('\\', '/');
 
             int patchIndex = name.indexOf(".patch");
 
@@ -115,15 +127,18 @@ public class PostDecompileTask extends AbstractEditJarTask
         file = FFPatcher.processFile(file);
 
         // patch the file
-        Collection<File> patchFiles = patchesMap.get(name.replace('/', '.'));
+        Collection<File> patchFiles = patchesMap.get(name);
         if (!patchFiles.isEmpty())
         {
-            getLogger().debug("applying MCP patches");
+            getLogger().debug("applying " + patchFiles.size() + " MCP patch(es)");
             ContextProvider provider = new ContextProvider(file);
             ContextualPatch patch = findPatch(patchFiles, provider,getLogger());
             if (patch != null) {
                 patchErrors.add(new PatchAttempt(patch.patch(false),file));
                 file = provider.getAsString();
+            } else {
+            	//This shouldn't ever happen
+            	throw new IllegalStateException("Cannot find patches " + patchFiles + " for " + name);
             }
         }
 
@@ -167,35 +182,23 @@ public class PostDecompileTask extends AbstractEditJarTask
     protected void postWrite(JarOutputStream jarOut) throws IOException
     {
         File file = ((DelayedFile)this.injectDir).call();
-        File info = new File(file, "package-info-template.java");
-        if (info.exists())
-        {
-            String template = Resources.toString(info.toURI().toURL(), Charsets.UTF_8);
-            getLogger().info("Adding package-infos");
-            for (String pkg : this.seenPackages)
-            {
-                getLogger().info("  " + pkg + "/package-info.java");
-                jarOut.putNextEntry(new ZipEntry(pkg + "/package-info.java"));
-                jarOut.write(template.replaceAll("\\{PACKAGE\\}", pkg.replace('/', '.')).getBytes());
-                jarOut.closeEntry();
-            }
-        }
-        File common = new File(file, "common/");
-        if (common.isDirectory())
-        {
-            String root = common.getAbsolutePath().replace('\\', '/');
-            if (!root.endsWith("/")) root += '/';
-            getLogger().info("Inject Root: " + root);
 
-            for (File f : this.getProject().fileTree(common))
-            {
-                String full = f.getAbsolutePath().replace('\\', '/');
-                String name = full.substring(root.length());
-                getLogger().info("  Injecting: " + name);
-                jarOut.putNextEntry(new ZipEntry(name));
-                jarOut.write(Resources.toByteArray(f.toURI().toURL()));
-                jarOut.closeEntry();
-            }
+        for (File f : getProject().fileTree(file)) {
+        	if ("package-info-template.java".equals(f.getName())) {
+        		String template = Files.toString(f, Charsets.UTF_8);
+                getLogger().debug("Adding package-infos");
+
+                for (String pkg : seenPackages) {
+                    jarOut.putNextEntry(new ZipEntry(pkg + "/package-info.java"));
+                    jarOut.write(template.replaceAll("\\{PACKAGE\\}", pkg.replace('/', '.')).getBytes());
+                    jarOut.closeEntry();
+                }
+        	} else {
+	            String name = f.getAbsolutePath().substring(file.getAbsolutePath().length() + 1).replace('\\', '/');
+	            jarOut.putNextEntry(new ZipEntry(name));
+	            jarOut.write(Files.asByteSource(f).read());
+	            jarOut.closeEntry();
+        	}
         }
     }
 
@@ -255,7 +258,7 @@ public class PostDecompileTask extends AbstractEditJarTask
     {
         ContextualPatch patch = null;
         File lastFile = null;
-        boolean success = true;
+        boolean success = false;
         for (File f : files)
         {
             logger.debug("trying MCP patch " + f.getName());
@@ -281,7 +284,6 @@ public class PostDecompileTask extends AbstractEditJarTask
         return patch;
     }
 
-    @InputFile
     public File getAstyleConfig()
     {
         return getProject().file(astyleConfig);

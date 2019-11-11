@@ -30,6 +30,7 @@ import java.util.Map.Entry;
 import java.util.Set;
 
 import net.minecraftforge.gradle.common.Constants;
+import net.minecraftforge.gradle.util.ThrowableUtil;
 import net.minecraftforge.gradle.util.caching.Cached;
 import net.minecraftforge.gradle.util.caching.CachedTask;
 
@@ -48,6 +49,7 @@ import org.gradle.util.GradleVersion;
 
 import com.google.common.base.Charsets;
 import com.google.common.base.Joiner;
+import com.google.common.base.Throwables;
 import com.google.common.collect.ImmutableMap;
 import com.google.common.collect.Lists;
 import com.google.common.collect.Maps;

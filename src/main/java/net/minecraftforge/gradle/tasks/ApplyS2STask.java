@@ -30,7 +30,7 @@ import java.util.Map;
 import net.minecraftforge.gradle.common.Constants;
 import net.minecraftforge.gradle.util.SequencedInputSupplier;
 import net.minecraftforge.gradle.util.SourceDirSetSupplier;
-import net.minecraftforge.srg2source.api.RangeApplierBuilder;
+import net.minecraftforge.srg2source.rangeapplier.RangeApplier;
 import net.minecraftforge.srg2source.util.io.FolderSupplier;
 import net.minecraftforge.srg2source.util.io.InputSupplier;
 import net.minecraftforge.srg2source.util.io.OutputSupplier;
@@ -96,6 +96,12 @@ public class ApplyS2STask extends DefaultTask
                 ((SequencedInputSupplier) inSup).add(getInput(o));
         }
 
+        OutputSupplier outSup;
+        if (in.size() == 1 && in.get(0).equals(out) && in instanceof FolderSupplier)
+            outSup = (OutputSupplier) inSup;
+        else
+            outSup = getOutput(out);
+
         if (getExcModifiers() != null)
         {
             getLogger().lifecycle("creating default param names");
@@ -103,10 +109,11 @@ public class ApplyS2STask extends DefaultTask
         }
 
         getLogger().lifecycle("remapping source...");
-        applyRangeMap(inSup, out, srg, exc, rangemap, rangelog);
+        applyRangeMap(inSup, outSup, srg, exc, rangemap, rangelog);
 
 
         inSup.close();
+        outSup.close();
     }
 
     private InputSupplier getInput(Object o) throws IOException
@@ -130,7 +137,6 @@ public class ApplyS2STask extends DefaultTask
             throw new IllegalArgumentException("Can only make suppliers out of directories, zips, and SourceDirectorySets right now!");
     }
 
-    @SuppressWarnings("unused")
     private OutputSupplier getOutput(File f) throws IOException
     {
         if (f.isDirectory())
@@ -143,24 +149,23 @@ public class ApplyS2STask extends DefaultTask
             throw new IllegalArgumentException("Can only make suppliers out of directories and zips right now!");
     }
 
-    private void applyRangeMap(InputSupplier inSup, File out, FileCollection srg, FileCollection exc, File rangeMap, File rangeLog) throws IOException
+    private void applyRangeMap(InputSupplier inSup, OutputSupplier outSup, FileCollection srg, FileCollection exc, File rangeMap, File rangeLog) throws IOException
     {
-        RangeApplierBuilder builder = new RangeApplierBuilder()
-                .input(inSup)
-                .output(out)
-                .range(rangeMap)
-                .annotate(false)
-                .logger(Constants.getTaskLogStream(getProject(), this.getName() + ".log"));
+        RangeApplier app = new RangeApplier().readSrg(srg.getFiles());
 
-        srg.forEach(builder::srg);
-        exc.forEach(builder::exc);
+        app.setOutLogger(Constants.getTaskLogStream(getProject(), this.getName() + ".log"));
 
-        if (this.isS2sKeepImports())
+        app.setKeepImports(this.isS2sKeepImports());
+
+        if (!exc.isEmpty())
         {
-            builder.keepImports();
+            app.readParamMap(exc);
         }
 
-        builder.build().run();
+        // for debugging.
+        app.dumpRenameMap();
+
+        app.remapSources(inSup, outSup, rangeMap, false);
     }
 
 
