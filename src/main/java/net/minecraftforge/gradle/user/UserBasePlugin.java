@@ -78,7 +78,6 @@ import org.gradle.api.tasks.compile.GroovyCompile;
 import org.gradle.api.tasks.compile.JavaCompile;
 import org.gradle.api.tasks.javadoc.Javadoc;
 import org.gradle.api.tasks.scala.ScalaCompile;
-import org.gradle.listener.ActionBroadcast;
 import org.gradle.plugins.ide.eclipse.model.Classpath;
 import org.gradle.plugins.ide.eclipse.model.ClasspathEntry;
 import org.gradle.plugins.ide.eclipse.model.EclipseModel;
@@ -114,7 +113,6 @@ public abstract class UserBasePlugin extends BasePlugin<UserExtension>
 
         configureDeps();
         configureCompilation();
-        configureEclipse();
         configureIntellij();
 
         tasks();
@@ -317,8 +315,8 @@ public abstract class UserBasePlugin extends BasePlugin<UserExtension>
     {
         Configuration config = project.getConfigurations().getByName(CONFIG);
 
-        Javadoc javadoc = (Javadoc) project.getTasks().getByName("javadoc");
-        javadoc.getClasspath().add(config);
+        //Javadoc javadoc = (Javadoc) project.getTasks().getByName("javadoc");
+        //javadoc.getClasspath().add(config);
 
         // get conventions
         JavaPluginConvention javaConv = (JavaPluginConvention) project.getConvention().getPlugins().get("java");
@@ -400,69 +398,6 @@ public abstract class UserBasePlugin extends BasePlugin<UserExtension>
             compile.dependsOn("sourceMainGroovy");
             compile.setSource(task.getOutput());
         }
-    }
-
-    @SuppressWarnings({ "unchecked" })
-    protected void configureEclipse()
-    {
-        EclipseModel eclipseConv = (EclipseModel) project.getExtensions().getByName("eclipse");
-
-        eclipseConv.getClasspath().setDownloadJavadoc(true);
-        eclipseConv.getClasspath().setDownloadSources(true);
-        ((ActionBroadcast<Classpath>) eclipseConv.getClasspath().getFile().getWhenMerged()).add(new Action<Classpath>()
-        {
-            @Override
-            public void execute(Classpath classpath)
-            {
-                String natives = delayedString(NATIVES_DIR).call().replace('\\', '/');
-                for (ClasspathEntry e : classpath.getEntries())
-                {
-                    if (e instanceof Library)
-                    {
-                        Library lib = (Library) e;
-                        if (lib.getPath().contains("lwjg") || lib.getPath().contains("jinput"))
-                        {
-                            lib.setNativeLibraryLocation(natives);
-                        }
-                    }
-                }
-            }
-        });
-
-        Task task = makeTask("afterEclipseImport", DefaultTask.class);
-        task.doLast(new Action<Object>() {
-            public void execute(Object obj)
-            {
-                try
-                {
-                    Node root = new XmlParser().parseText(Files.toString(project.file(".classpath"), Charset.defaultCharset()));
-
-                    HashMap<String, String> map = new HashMap<String, String>();
-                    map.put("name", "org.eclipse.jdt.launching.CLASSPATH_ATTR_LIBRARY_PATH_ENTRY");
-                    map.put("value", delayedString(NATIVES_DIR).call());
-
-                    for (Node child : (List<Node>) root.children())
-                    {
-                        if (child.attribute("path").equals("org.springsource.ide.eclipse.gradle.classpathcontainer"))
-                        {
-                            child.appendNode("attributes").appendNode("attribute", map);
-                            break;
-                        }
-                    }
-
-                    String result = XmlUtil.serialize(root);
-
-                    project.getLogger().lifecycle(result);
-                    Files.write(result, project.file(".classpath"), Charset.defaultCharset());
-
-                }
-                catch (Exception e)
-                {
-                    e.printStackTrace();
-                    return;
-                }
-            }
-        });
     }
 
     @SuppressWarnings("serial")
@@ -826,54 +761,6 @@ public abstract class UserBasePlugin extends BasePlugin<UserExtension>
 
         // add dependency
         project.getDependencies().add(CONFIG, project.files(deobfOut));
-
-        // link sources and javadocs eclipse
-        EclipseModel eclipseConv = (EclipseModel) project.getExtensions().getByName("eclipse");
-        ((ActionBroadcast<Classpath>) eclipseConv.getClasspath().getFile().getWhenMerged()).add(new Action<Classpath>()
-        {
-            FileReferenceFactory factory = new FileReferenceFactory();
-
-            @Override
-            public void execute(Classpath classpath)
-            {
-                for (ClasspathEntry e : classpath.getEntries())
-                {
-                    if (e instanceof Library)
-                    {
-                        Library lib = (Library) e;
-                        if (lib.getLibrary().getFile().equals(deobfOut))
-                        {
-                            lib.setJavadocPath(factory.fromFile(project.getConfigurations().getByName(CONFIG_API_JAVADOCS).getSingleFile()));
-                            lib.setSourcePath(factory.fromFile(project.getConfigurations().getByName(CONFIG_API_SRC).getSingleFile()));
-                        }
-                    }
-                }
-            }
-        });
-
-        // link sources and javadocs ntellij idea
-        IdeaModel ideaConv = (IdeaModel) project.getExtensions().getByName("idea");
-        ((ActionBroadcast<Module>) ideaConv.getModule().getIml().getWhenMerged()).add(new Action<Module>() {
-
-            PathFactory factory = new PathFactory();
-
-            @Override
-            public void execute(Module module)
-            {
-                for (Dependency d : module.getDependencies())
-                {
-                    if (d instanceof SingleEntryModuleLibrary)
-                    {
-                        SingleEntryModuleLibrary lib = (SingleEntryModuleLibrary) d;
-                        if (lib.getLibraryFile().equals(deobfOut))
-                        {
-                            lib.getJavadoc().add(factory.path("jar://" + project.getConfigurations().getByName(CONFIG_API_JAVADOCS).getSingleFile().getAbsolutePath().replace('\\', '/') + "!/"));
-                            lib.getSources().add(factory.path("jar://" + project.getConfigurations().getByName(CONFIG_API_SRC).getSingleFile().getAbsolutePath().replace('\\', '/') + "!/"));
-                        }
-                    }
-                }
-            }
-        });
 
         // fix eclipse project location...
         fixEclipseProject(ECLIPSE_LOCATION);
