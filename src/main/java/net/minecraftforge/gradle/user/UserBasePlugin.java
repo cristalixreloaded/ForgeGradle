@@ -772,7 +772,7 @@ public abstract class UserBasePlugin extends BasePlugin<UserExtension>
         Configuration config = project.getConfigurations().getByName(CONFIG);
 
         Javadoc javadoc = (Javadoc) project.getTasks().getByName("javadoc");
-        javadoc.getClasspath().add(config);
+        javadoc.getClasspath().plus(config);
 
         // get conventions
         JavaPluginConvention javaConv = (JavaPluginConvention) project.getConvention().getPlugins().get("java");

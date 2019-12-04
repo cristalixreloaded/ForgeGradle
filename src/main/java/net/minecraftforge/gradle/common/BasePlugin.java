@@ -221,7 +221,7 @@ public abstract class BasePlugin<K extends BaseExtension> implements Plugin<Proj
 
     /**
      * @return the extension object with name EXT_NAME_MC
-     * @see Constants.EXT_NAME_MC
+     * @see Constants#EXT_NAME_MC
      */
     @SuppressWarnings("unchecked")
     public final K getExtension()

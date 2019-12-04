@@ -1,5 +1,5 @@
 plugins {
-    id 'org.ajoberstar.grgit' version '3.0.0'
+    id "com.jfrog.bintray" version "1.8.4"
 }
 
 apply plugin: 'java'
@@ -8,16 +8,17 @@ apply plugin: 'eclipse'
 apply plugin: 'maven-publish'
 
 group = 'net.minecraftforge.gradle'
-version = gitVersion()
-def gitVersion() {
-    def raw = grgit.describe(longDescr: true, tags: true)
-    def desc = (raw == null ? 'unknown-unknown-unknown' : raw).split('-') as List
-    def hash = desc.remove(desc.size() - 1)
-    def offset = desc.remove(desc.size() - 1)
-    def tag = desc.join('-')
-    def branch = grgit.branch.current().name
-    return "${tag}.${offset}" //${t -> if (branch != 'master') t << '-' + branch}"
+
+if (!getGitHash().contains("unknown")) {
+    version = getGitHash()
+} else {
+    if (project.hasProperty("push_release")) {
+        version = '1.0-1.0.0'
+    } else {
+        version = '1.0-1.0.0-SNAPSHOT'
+    }
 }
+
 archivesBaseName = 'ForgeGradle'
 targetCompatibility = '1.6'
 sourceCompatibility = '1.6'
@@ -34,6 +35,7 @@ jar {
     manifest {
         attributes 'version':project.version, 'javaCompliance': project.targetCompatibility
         attributes 'group':project.group
+        attributes 'Implementation-Version': project.version + '-' + getGitHash()
     }
 }
 
@@ -67,25 +69,121 @@ dependencies {
     deployerJars "org.apache.maven.wagon:wagon-ssh:2.2"
 }
 
-artifacts { archives jar }
+compileJava {
+    options.deprecation = true
+    //options.compilerArgs += ["-Werror", "-Xlint:unchecked"]
+}
+
+javadoc {
+    classpath += configurations.compileOnly
+
+    // linked javadoc urls.. why not...
+    options.addStringOption 'link', 'https://gradle.org/docs/current/javadoc/'
+    options.addStringOption 'link', 'http://docs.guava-libraries.googlecode.com/git-history/v18.0/javadoc'
+    options.addStringOption 'link', 'http://asm.ow2.org/asm50/javadoc/user/'
+}
+
+task javadocJar(type: Jar, dependsOn: javadoc) {
+    from javadoc
+    classifier = "javadoc"
+}
+
+artifacts {
+    archives jar
+    archives javadocJar
+}
 
 publishing {
     publications {
-        mavenJava(MavenPublication) {
+        bintray(MavenPublication) {
             from components.java
+            artifact javadocJar
+
+            pom {
+                name = project.archivesBaseName
+                description = 'Gradle plugin for Forge'
+                url = 'https://github.com/MinecraftForge/ForgeGradle'
+
+                scm {
+                    url = 'https://github.com/anatawa12/ForgeGradle'
+                    connection = 'scm:git:git://github.com/anatawa12/ForgeGradle.git'
+                    developerConnection = 'scm:git:git@github.com:anatawa12/ForgeGradle.git'
+                }
+
+                issueManagement {
+                    system = 'github'
+                    url = 'https://github.com/anatawa12/ForgeGradle/issues'
+                }
+
+                licenses {
+                    license {
+                        name = 'Lesser GNU Public License, Version 2.1'
+                        url = 'https://www.gnu.org/licenses/lgpl-2.1.html'
+                        distribution = 'repo'
+                    }
+                }
+
+                developers {
+                    developer {
+                        id = 'AbrarSyed'
+                        name = 'Abrar Syed'
+                        roles = ['developer']
+                    }
+
+                    developer {
+                        id = 'LexManos'
+                        name = 'Lex Manos'
+                        roles = ['developer']
+                    }
+
+                    developer {
+                        id = 'anatawa12'
+                        name = 'anatawa12'
+                        roles = ['developer']
+                    }
+                }
+            }
         }
     }
     repositories {
         maven {
-            if (project.hasProperty('forgeMavenPassword')) {
-                credentials {
-                    username project.properties.forgeMavenUser
-                    password project.properties.forgeMavenPassword
-                }
-                url 'https://files.minecraftforge.net/maven/manage/upload'
-            } else {
-                url 'file://' + rootProject.file('repo').getAbsolutePath()
+            // change URLs to point to your repos, e.g. http://my.org/repo
+            def releasesRepoUrl = "$buildDir/repos/releases"
+            def snapshotsRepoUrl = "$buildDir/repos/snapshots"
+            url = version.endsWith('SNAPSHOT') ? snapshotsRepoUrl : releasesRepoUrl
+        }
+    }
+}
+
+if (project.hasProperty("push_release")) {
+    bintray {
+        user = project.hasProperty("BINTRAY_USER") ? BINTRAY_USER : ""
+        key = project.hasProperty("BINTRAY_KEY") ? BINTRAY_KEY : ""
+        publications = ["bintray"]
+
+        pkg {
+            repo = "maven"
+            name = group + "." + project.name
+            licenses = ["LGPL-2.1"]
+            websiteUrl = "https://github.com/anatawa12/ForgeGradle/"
+            issueTrackerUrl = "https://github.com/anatawa12/ForgeGradle/issues"
+            vcsUrl = "https://github.com/anatawa12/ForgeGradle.git"
+            publicDownloadNumbers = true
+            version {
+                name = project.version
             }
         }
     }
+}
+
+bintrayUpload.dependsOn assemble
+
+// write out version so its convenient for doc deployment
+file('build').mkdirs()
+file('build/version.txt').text = version;
+
+static def getGitHash() {
+    def process = 'git rev-parse --short HEAD'.execute()
+    process.waitFor()
+    return (process.exitValue() ? 'unknown' : process.text.trim())
 }
