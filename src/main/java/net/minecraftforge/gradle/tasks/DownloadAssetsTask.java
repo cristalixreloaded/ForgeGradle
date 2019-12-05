@@ -182,7 +182,7 @@ public class DownloadAssetsTask extends DefaultTask
                         // check for local copy
                         if (localMc.exists() && Constants.hash(localMc, "SHA1").equals(asset.hash))
                             // if so, copy
-                            stream = new BufferedInputStream(Files.newInputStreamSupplier(localMc).getInput());
+                            stream = new BufferedInputStream(Files.asByteSource(localMc).openStream());
                         else
                             // otherwise download
                             stream = new BufferedInputStream(new URL(Constants.ASSETS_URL + "/" + asset.path).openStream());

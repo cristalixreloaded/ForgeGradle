@@ -138,7 +138,7 @@ public class MergeMappingsTask extends CachedTask
         Properties mappingsOut = new Properties();
 
         // Try to load the mappings
-        mappings.load(Files.newInputStreamSupplier(inExc).getInput());
+        mappings.load(Files.asByteSource(inExc).openStream());
 
         for (Map.Entry<Object, Object> entry : mappings.entrySet())
         {
@@ -182,7 +182,7 @@ public class MergeMappingsTask extends CachedTask
             mappingsOut.setProperty(newKey, Joiner.on('|').join(exceptionsAndParams));
         }
 
-        mappingsOut.store(Files.newOutputStreamSupplier(outExc).getOutput(), "");
+        mappingsOut.store(Files.asByteSink(outExc).openStream(), "");
     }
 
     private void fixPatch(File patch, File outPatch) throws IOException
