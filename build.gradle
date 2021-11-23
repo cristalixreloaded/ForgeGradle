@@ -23,7 +23,7 @@ repositories {
     mavenLocal()
     maven {
         name = "forge"
-        url = "http://files.minecraftforge.net/maven"
+        url = "http://maven.minecraftforge.net"
     }
     maven {
         // because Srg2Source needs an eclipse dependency.
@@ -31,9 +31,8 @@ repositories {
         url = "https://repo.eclipse.org/content/groups/eclipse/"
     }
     maven {
-        // because SpecialSource doesnt have a full release
-        name = "sonatype"
-        url = "https://oss.sonatype.org/content/repositories/snapshots/"
+        name = "central"
+        url = "https://repo1.maven.org/maven2"
     }
     mavenCentral()
     maven {
