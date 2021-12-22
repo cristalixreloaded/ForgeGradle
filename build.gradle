@@ -23,12 +23,16 @@ repositories {
     mavenLocal()
     maven {
         name = "forge"
-        url = "http://maven.minecraftforge.net"
+        url = "https://maven.minecraftforge.net"
     }
     maven {
         // because Srg2Source needs an eclipse dependency.
         name = "eclipse"
         url = "https://repo.eclipse.org/content/groups/eclipse/"
+    }
+    maven {
+        name = "sometheeng"
+        url = "https://maven.covertdragon.team/repository/internal/"
     }
     maven {
         name = "central"
